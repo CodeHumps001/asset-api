@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EquipmentStatus {
+  IN_USE
+  UNDER_MAINTENANCE
+  IN_STORAGE
+  FAULTY
+  RETIRED
+}
+
+enum EquipmentCondition {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+  DAMAGED
+}
+
+enum EquipmentCategory {
+  COMPUTER
+  NETWORK
+  PRINTER
+  OTHER
+}
+
+enum InvitationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  ACCEPTED
+  EXPIRED
+  FAILED
+}
+
+enum EmailStatus {
+  SENT
+  FAILED
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  key         String  @unique
+  description String?
+  roles       Role[]
+}
+
+model Role {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  description String?
+  permissions Permission[]
+  users       User[]
+}
+
+model Department {
+  id              String                @id @default(uuid())
+  name            String                @unique
+  code            String?
+  users           User[]
+  staff           Staff[]
+  equipment       Equipment[]
+  assignmentsNew  EquipmentAssignment[] @relation("AssignDept")
+  assignmentsPrev EquipmentAssignment[] @relation("PrevDept")
+}
+
+model Location {
+  id              String                @id @default(uuid())
+  name            String                @unique
+  description     String?
+  equipment       Equipment[]
+  assignmentsNew  EquipmentAssignment[] @relation("AssignLoc")
+  assignmentsPrev EquipmentAssignment[] @relation("PrevLoc")
+}
+
+model Staff {
+  id              String                @id @default(uuid())
+  firstName       String
+  lastName        String
+  email           String?
+  position        String?
+  isActive        Boolean               @default(true)
+  departmentId    String
+  department      Department            @relation(fields: [departmentId], references: [id])
+  equipment       Equipment[]
+  assignmentsNew  EquipmentAssignment[] @relation("AssignStaff")
+  assignmentsPrev EquipmentAssignment[] @relation("PrevStaff")
+}
+
+model User {
+  id                 String                @id @default(uuid())
+  firstName          String
+  lastName           String
+  email              String                @unique
+  phone              String?
+  passwordHash       String?
+  isActive           Boolean               @default(true)
+  activatedAt        DateTime?
+  lastLoginAt        DateTime?
+  roleId             String
+  role               Role                  @relation(fields: [roleId], references: [id])
+  departmentId       String?
+  department         Department?           @relation(fields: [departmentId], references: [id])
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  invitations        InvitationToken[]     @relation("InvitedUser")
+  invitationsCreated InvitationToken[]     @relation("InvitationCreator")
+  refreshTokens      RefreshToken[]
+  resetTokens        PasswordResetToken[]
+  auditLogs          AuditLog[]
+  maintenanceRecords MaintenanceRecord[]
+  transfers          EquipmentAssignment[]
+  emails             EmailNotification[]
+}
+
+model InvitationToken {
+  id          String           @id @default(uuid())
+  userId      String
+  user        User             @relation("InvitedUser", fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash   String           @unique
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  sentAt      DateTime?
+  acceptedAt  DateTime?
+  usedAt      DateTime?
+  lastError   String?
+  createdById String?
+  createdBy   User?            @relation("InvitationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Equipment {
+  id                        String                @id @default(uuid())
+  assetNumber               String                @unique
+  category                  EquipmentCategory     @default(OTHER)
+  type                      String
+  name                      String
+  serialNumber              String?               @unique
+  manufacturer              String?
+  model                     String?
+  purchaseDate              DateTime?
+  status                    EquipmentStatus       @default(IN_USE)
+  condition                 EquipmentCondition    @default(GOOD)
+  departmentId              String?
+  department                Department?           @relation(fields: [departmentId], references: [id])
+  locationId                String?
+  location                  Location?             @relation(fields: [locationId], references: [id])
+  assignedStaffId           String?
+  assignedStaff             Staff?                @relation(fields: [assignedStaffId], references: [id])
+  lastMaintenanceDate       DateTime?
+  maintenanceIntervalMonths Int?
+  nextMaintenanceDate       DateTime?
+  notes                     String?
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+  assignments               EquipmentAssignment[]
+  maintenanceRecords        MaintenanceRecord[]
+
+  @@index([status])
+  @@index([category])
+  @@index([nextMaintenanceDate])
+}
+
+model EquipmentAssignment {
+  id                   String      @id @default(uuid())
+  equipmentId          String
+  equipment            Equipment   @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  staffId              String?
+  staff                Staff?      @relation("AssignStaff", fields: [staffId], references: [id])
+  previousStaffId      String?
+  previousStaff        Staff?      @relation("PrevStaff", fields: [previousStaffId], references: [id])
+  departmentId         String?
+  department           Department? @relation("AssignDept", fields: [departmentId], references: [id])
+  previousDepartmentId String?
+  previousDepartment   Department? @relation("PrevDept", fields: [previousDepartmentId], references: [id])
+  locationId           String?
+  location             Location?   @relation("AssignLoc", fields: [locationId], references: [id])
+  previousLocationId   String?
+  previousLocation     Location?   @relation("PrevLoc", fields: [previousLocationId], references: [id])
+  isCurrent            Boolean     @default(true)
+  transferDate         DateTime    @default(now())
+  reason               String?
+  transferredById      String?
+  transferredBy        User?       @relation(fields: [transferredById], references: [id], onDelete: SetNull)
+
+  @@index([equipmentId, isCurrent])
+}
+
+model MaintenanceRecord {
+  id              String    @id @default(uuid())
+  equipmentId     String
+  equipment       Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  maintenanceDate DateTime
+  maintenanceType String
+  description     String
+  technician      String
+  cost            Float?
+  notes           String?
+  recordedById    String?
+  recordedBy      User?     @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now())
+
+  @@index([equipmentId])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorId     String?
+  actor       User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action      String
+  entityType  String
+  entityId    String?
+  description String
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+}
+
+model EmailNotification {
+  id        String      @id @default(uuid())
+  userId    String?
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  toEmail   String
+  subject   String
+  type      String
+  status    EmailStatus
+  error     String?
+  createdAt DateTime    @default(now())
+}
